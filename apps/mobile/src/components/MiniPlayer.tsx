@@ -19,7 +19,12 @@ export const MiniPlayer: React.FC<MiniPlayerProps> = ({ onPress }) => {
 
   return (
     <View style={styles.container}>
-      <TouchableOpacity activeOpacity={0.9} style={styles.content} onPress={onPress}>
+      <TouchableOpacity
+        activeOpacity={0.9}
+        style={styles.content}
+        onPress={onPress}
+        testID="mini-player"
+      >
         {/* Album Artwork */}
         <View style={styles.artworkContainer}>
           {currentTrack.thumbnailUrl ? (

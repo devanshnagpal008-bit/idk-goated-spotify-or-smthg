@@ -23,6 +23,7 @@ interface PlayerState {
   playTrack: (track: Track, newQueue?: Track[]) => Promise<void>;
   togglePlayPause: () => Promise<void>;
   seekTo: (positionMillis: number) => Promise<void>;
+  seekBy: (deltaMillis: number) => Promise<void>;
   playNext: () => Promise<void>;
   playPrevious: () => Promise<void>;
   addToQueue: (track: Track) => void;
@@ -172,14 +173,23 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   },
 
   seekTo: async (positionMillis: number) => {
-    const { sound } = get();
+    const { sound, durationMillis } = get();
     if (!sound) return;
+    const clampedPos = Math.max(0, Math.min(durationMillis > 0 ? durationMillis : Infinity, positionMillis));
+    // Set state immediately for 0ms visual responsiveness
+    set({ positionMillis: clampedPos });
     try {
-      await sound.setPositionAsync(positionMillis);
-      set({ positionMillis });
+      await sound.setPositionAsync(clampedPos);
     } catch (err) {
       console.error('Seek failed:', err);
     }
+  },
+
+  seekBy: async (deltaMillis: number) => {
+    const { positionMillis, durationMillis, seekTo } = get();
+    const maxDur = durationMillis > 0 ? durationMillis : 3600000;
+    const target = Math.max(0, Math.min(maxDur, positionMillis + deltaMillis));
+    await seekTo(target);
   },
 
   playNext: async () => {
@@ -214,6 +224,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     const { queue, queueIndex, positionMillis, sound, playTrack } = get();
     // If played more than 3 seconds, restart current track
     if (positionMillis > 3000 && sound) {
+      set({ positionMillis: 0 });
       await sound.setPositionAsync(0);
       return;
     }
@@ -221,6 +232,9 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     const prevIndex = queueIndex - 1;
     if (prevIndex >= 0) {
       await playTrack(queue[prevIndex]);
+    } else if (sound) {
+      set({ positionMillis: 0 });
+      await sound.setPositionAsync(0);
     }
   },
 
