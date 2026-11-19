@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import { Mic2, AlertCircle } from 'lucide-react-native';
 import { usePlayerStore } from '../stores/usePlayerStore';
+import { API_BASE_URL } from '../services/api';
 
 interface LyricsLine {
   time_ms: number;
@@ -46,7 +47,7 @@ export const LyricsView: React.FC = () => {
       if (currentTrack.durationSeconds) params.append('duration', String(currentTrack.durationSeconds));
       if (currentTrack.sourceId) params.append('video_id', currentTrack.sourceId);
 
-      const res = await fetch(`http://localhost:8000/api/lyrics?${params.toString()}`);
+      const res = await fetch(`${API_BASE_URL}/lyrics?${params.toString()}`);
       if (res.ok) {
         const data = await res.json();
         setLyricsData(data);
