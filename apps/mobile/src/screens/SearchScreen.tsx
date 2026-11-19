@@ -12,7 +12,7 @@ import {
   Keyboard
 } from 'react-native';
 import { Search as SearchIcon, X, Play, Music, MoreVertical } from 'lucide-react-native';
-import { searchCatalog, Track } from '../services/api';
+import { searchCatalog, Track, getRadioTracks } from '../services/api';
 import { usePlayerStore } from '../stores/usePlayerStore';
 
 export const SearchScreen: React.FC = () => {
@@ -23,6 +23,26 @@ export const SearchScreen: React.FC = () => {
   const [hasSearched, setHasSearched] = useState(false);
 
   const { currentTrack, isPlaying, playTrack, addToQueue, playTrackNext } = usePlayerStore();
+
+  // Play a track from search with a smart radio queue (similar songs)
+  const handlePlayFromSearch = async (track: Track) => {
+    // Start playing immediately with just the selected track
+    playTrack(track, [track]);
+
+    // Then fetch similar tracks in the background and append them to the queue
+    try {
+      const sourceId = track.sourceId || (track as any).source_id || track.id.replace(/^yt_/, '');
+      const radioTracks = await getRadioTracks(sourceId, 25);
+      // Filter out the track itself to avoid duplicates
+      const filtered = radioTracks.filter(t => t.id !== track.id);
+      if (filtered.length > 0) {
+        const { queue } = usePlayerStore.getState();
+        usePlayerStore.setState({ queue: [...queue, ...filtered] });
+      }
+    } catch (e) {
+      console.debug('Radio queue fetch failed, playing single track:', e);
+    }
+  };
 
   const handleSearch = useCallback(async (searchQuery: string, type: string) => {
     if (!searchQuery.trim()) {
@@ -68,7 +88,7 @@ export const SearchScreen: React.FC = () => {
       <TouchableOpacity
         style={[styles.trackItem, isCurrent && styles.trackItemActive]}
         activeOpacity={0.7}
-        onPress={() => playTrack(item, results)}
+        onPress={() => handlePlayFromSearch(item)}
       >
         <View style={styles.thumbnailContainer}>
           {item.thumbnailUrl ? (
