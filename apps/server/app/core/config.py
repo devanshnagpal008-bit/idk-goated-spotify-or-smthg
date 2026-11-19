@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -8,10 +9,10 @@ class Settings(BaseSettings):
     HOST: str = "0.0.0.0"
     PORT: int = 8000
     
-    # Base paths pointing to root monorepo
+    # Base paths — works in Docker (/app) and local dev
     SERVER_DIR: Path = Path(__file__).resolve().parent.parent.parent
-    BASE_DIR: Path = SERVER_DIR.parent.parent
-    DATA_DIR: Path = BASE_DIR / "data"
+    BASE_DIR: Path = Path(os.environ.get("SONORA_BASE_DIR", str(SERVER_DIR.parent.parent)))
+    DATA_DIR: Path = Path(os.environ.get("SONORA_DATA_DIR", str(BASE_DIR / "data")))
     COOKIES_PATH: Path = DATA_DIR / "cookies.txt"
     
     # SQLite

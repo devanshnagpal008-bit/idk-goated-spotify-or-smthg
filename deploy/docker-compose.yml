@@ -1,0 +1,23 @@
+services:
+  sonora-backend:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    container_name: sonora-backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - sonora-data:/app/data
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8000
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  sonora-data:
+    driver: local
