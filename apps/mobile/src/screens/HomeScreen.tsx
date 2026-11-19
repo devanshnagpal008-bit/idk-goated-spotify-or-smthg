@@ -12,7 +12,7 @@ import {
   TextInput
 } from 'react-native';
 import { Play, Sparkles, Wand2, Music2, Clock } from 'lucide-react-native';
-import { getHomeFeed, HomeFeed, Track } from '../services/api';
+import { getHomeFeed, HomeFeed, Track, API_BASE_URL } from '../services/api';
 import { usePlayerStore } from '../stores/usePlayerStore';
 
 export const HomeScreen: React.FC = () => {
@@ -44,7 +44,7 @@ export const HomeScreen: React.FC = () => {
     if (!aiPrompt.trim()) return;
     setIsGenerating(true);
     try {
-      const res = await fetch('http://localhost:8000/api/playlists/generate', {
+      const res = await fetch(`${API_BASE_URL}/playlists/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ prompt: aiPrompt.trim() })
