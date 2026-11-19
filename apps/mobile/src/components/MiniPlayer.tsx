@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, Image, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
 import { Play, Pause, SkipForward, Music } from 'lucide-react-native';
 import { usePlayerStore } from '../stores/usePlayerStore';
+import { upgradeArtworkUrl } from '../services/api';
 
 interface MiniPlayerProps {
   onPress?: () => void;
@@ -22,7 +23,11 @@ export const MiniPlayer: React.FC<MiniPlayerProps> = ({ onPress }) => {
         {/* Album Artwork */}
         <View style={styles.artworkContainer}>
           {currentTrack.thumbnailUrl ? (
-            <Image source={{ uri: currentTrack.thumbnailUrl }} style={styles.artwork} />
+            <Image
+              source={{ uri: upgradeArtworkUrl(currentTrack.thumbnailUrl, '1080p') }}
+              style={styles.artwork}
+              resizeMode="cover"
+            />
           ) : (
             <View style={[styles.artwork, styles.artworkPlaceholder]}>
               <Music color="#888" size={20} />

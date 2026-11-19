@@ -28,6 +28,7 @@ import {
 } from 'lucide-react-native';
 import { usePlayerStore } from '../stores/usePlayerStore';
 import { getArtworkGradientColors } from '../utils/colorExtractor';
+import { upgradeArtworkUrl } from '../services/api';
 import { QueueDrawer } from './QueueDrawer';
 import { AudioSettingsModal } from './AudioSettingsModal';
 import { LyricsView } from './LyricsView';
@@ -55,7 +56,8 @@ export const NowPlayingSheet: React.FC<NowPlayingSheetProps> = ({ visible, onClo
     isShuffled,
     toggleShuffle,
     repeatMode,
-    toggleRepeat
+    toggleRepeat,
+    artworkResolution,
   } = usePlayerStore();
 
   const [isLiked, setIsLiked] = useState(false);
@@ -63,10 +65,22 @@ export const NowPlayingSheet: React.FC<NowPlayingSheetProps> = ({ visible, onClo
   const [showAudioSettings, setShowAudioSettings] = useState(false);
   const [showBadgeDetail, setShowBadgeDetail] = useState(false);
   const [showLyrics, setShowLyrics] = useState(false);
+  const [fallbackStep, setFallbackStep] = useState(0);
 
   if (!currentTrack) {
     return null;
   }
+
+  // Progressive resolution cascade: selected -> 1440p -> 1080p -> 544p
+  const cascade: ('4k' | '1440p' | '1080p')[] =
+    artworkResolution === '4k' ? ['4k', '1440p', '1080p'] :
+    artworkResolution === '1440p' ? ['1440p', '1080p', '1080p'] :
+    ['1080p', '1080p', '1080p'];
+
+  const activeRes = cascade[Math.min(fallbackStep, cascade.length - 1)];
+  const resolvedArtwork = currentTrack.thumbnailUrl
+    ? upgradeArtworkUrl(currentTrack.thumbnailUrl, activeRes)
+    : '';
 
   const gradient = getArtworkGradientColors(currentTrack.id, currentTrack.title, currentTrack.artist);
   const progress = durationMillis > 0 ? Math.min(positionMillis / durationMillis, 1) : 0;
@@ -124,8 +138,17 @@ export const NowPlayingSheet: React.FC<NowPlayingSheetProps> = ({ visible, onClo
           ) : (
             <View style={styles.artworkWrapper}>
               <View style={styles.artworkShadowContainer}>
-                {currentTrack.thumbnailUrl ? (
-                  <Image source={{ uri: currentTrack.thumbnailUrl }} style={styles.artwork} />
+                {resolvedArtwork ? (
+                  <Image
+                    source={{ uri: resolvedArtwork }}
+                    style={styles.artwork}
+                    onError={() => {
+                      if (fallbackStep < cascade.length - 1) {
+                        setFallbackStep(prev => prev + 1);
+                      }
+                    }}
+                    resizeMode="cover"
+                  />
                 ) : (
                   <View style={[styles.artwork, styles.artworkPlaceholder]}>
                     <Music color="#888" size={64} />
@@ -169,6 +192,9 @@ export const NowPlayingSheet: React.FC<NowPlayingSheetProps> = ({ visible, onClo
             >
               <View style={[styles.qualityBadge, streamMetadata.isLossless && styles.losslessBadge]}>
                 <Text style={styles.qualityBadgeText}>{streamMetadata.label}</Text>
+              </View>
+              <View style={[styles.qualityBadge, styles.artworkBadge]}>
+                <Text style={styles.artworkBadgeText}>{activeRes.toUpperCase()} ARTWORK</Text>
               </View>
               {streamMetadata.loudnessDb !== undefined && streamMetadata.loudnessDb !== null && (
                 <Text style={styles.loudnessText}>
@@ -367,6 +393,17 @@ const styles = StyleSheet.create({
   },
   losslessBadge: {
     backgroundColor: 'rgba(52, 199, 89, 0.3)',
+  },
+  artworkBadge: {
+    backgroundColor: 'rgba(250, 45, 72, 0.25)',
+    borderColor: 'rgba(250, 45, 72, 0.4)',
+    borderWidth: 0.5,
+  },
+  artworkBadgeText: {
+    color: '#fa2d48',
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.5,
   },
   qualityBadgeText: {
     color: '#ffffff',
