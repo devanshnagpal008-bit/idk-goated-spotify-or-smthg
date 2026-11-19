@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -8,7 +8,9 @@ import {
   StyleSheet,
   SafeAreaView,
   Dimensions,
-  ActivityIndicator
+  ActivityIndicator,
+  PanResponder,
+  Platform
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import {
@@ -24,7 +26,9 @@ import {
   Sliders,
   Heart,
   Music,
-  Mic2
+  Mic2,
+  RotateCcw,
+  RotateCw
 } from 'lucide-react-native';
 import { usePlayerStore } from '../stores/usePlayerStore';
 import { getArtworkGradientColors } from '../utils/colorExtractor';
@@ -49,6 +53,7 @@ export const NowPlayingSheet: React.FC<NowPlayingSheetProps> = ({ visible, onClo
     isLoading,
     togglePlayPause,
     seekTo,
+    seekBy,
     playNext,
     playPrevious,
     positionMillis,
@@ -67,9 +72,11 @@ export const NowPlayingSheet: React.FC<NowPlayingSheetProps> = ({ visible, onClo
   const [showLyrics, setShowLyrics] = useState(false);
   const [fallbackStep, setFallbackStep] = useState(0);
 
-  if (!currentTrack) {
-    return null;
-  }
+  // Scrubber drag / seek state
+  const [isScrubbing, setIsScrubbing] = useState(false);
+  const [scrubPositionMillis, setScrubPositionMillis] = useState(0);
+  const trackRef = useRef<View>(null);
+  const trackLayoutRef = useRef({ x: 28, width: SCREEN_WIDTH - 56 });
 
   // Progressive resolution cascade: selected -> 1440p -> 1080p -> 544p
   const cascade: ('4k' | '1440p' | '1080p')[] =
@@ -78,12 +85,20 @@ export const NowPlayingSheet: React.FC<NowPlayingSheetProps> = ({ visible, onClo
     ['1080p', '1080p', '1080p'];
 
   const activeRes = cascade[Math.min(fallbackStep, cascade.length - 1)];
-  const resolvedArtwork = currentTrack.thumbnailUrl
+  const resolvedArtwork = currentTrack?.thumbnailUrl
     ? upgradeArtworkUrl(currentTrack.thumbnailUrl, activeRes)
     : '';
 
-  const gradient = getArtworkGradientColors(currentTrack.id, currentTrack.title, currentTrack.artist);
-  const progress = durationMillis > 0 ? Math.min(positionMillis / durationMillis, 1) : 0;
+  const gradient = currentTrack
+    ? getArtworkGradientColors(currentTrack.id, currentTrack.title, currentTrack.artist)
+    : { primary: '#1a1c29', secondary: '#11121d', background: '#08080c' };
+
+  // Time & progress calculation
+  const displayedPosition = isScrubbing ? scrubPositionMillis : positionMillis;
+  const effectiveDuration = durationMillis > 0 ? durationMillis : ((currentTrack?.durationSeconds || 180) * 1000);
+  const displayedProgress = effectiveDuration > 0
+    ? Math.max(0, Math.min(1, displayedPosition / effectiveDuration))
+    : 0;
 
   const formatTime = (millis: number) => {
     if (!millis || millis < 0) return '0:00';
@@ -93,39 +108,119 @@ export const NowPlayingSheet: React.FC<NowPlayingSheetProps> = ({ visible, onClo
     return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
   };
 
-  const remainingMillis = Math.max(0, durationMillis - positionMillis);
+  const remainingMillis = Math.max(0, effectiveDuration - displayedPosition);
 
-  const handleScrubPress = (event: any) => {
-    const { locationX } = event.nativeEvent;
-    const trackWidth = SCREEN_WIDTH - 48;
-    const ratio = Math.max(0, Math.min(1, locationX / trackWidth));
-    const targetMillis = ratio * durationMillis;
-    seekTo(targetMillis);
+  // Helper to accurately extract ratio from touch/pointer event across Web & Native
+  const getRatioFromPageX = (pageX: number): number => {
+    if (Platform.OS === 'web' && trackRef.current) {
+      const node = trackRef.current as any;
+      if (typeof node.getBoundingClientRect === 'function') {
+        const rect = node.getBoundingClientRect();
+        return Math.max(0, Math.min(1, (pageX - rect.left) / rect.width));
+      }
+    }
+    const width = trackLayoutRef.current.width || (SCREEN_WIDTH - 56);
+    const x = trackLayoutRef.current.x || 28;
+    return Math.max(0, Math.min(1, (pageX - x) / width));
   };
+
+  // Full PanResponder for fluid 60fps forward & backward dragging
+  const panResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => true,
+        onMoveShouldSetPanResponder: () => true,
+        onPanResponderGrant: (evt) => {
+          setIsScrubbing(true);
+          const ratio = getRatioFromPageX(evt.nativeEvent.pageX);
+          const target = ratio * effectiveDuration;
+          setScrubPositionMillis(target);
+        },
+        onPanResponderMove: (evt) => {
+          const ratio = getRatioFromPageX(evt.nativeEvent.pageX);
+          const target = ratio * effectiveDuration;
+          setScrubPositionMillis(target);
+        },
+        onPanResponderRelease: async (evt) => {
+          const ratio = getRatioFromPageX(evt.nativeEvent.pageX);
+          const target = ratio * effectiveDuration;
+          await seekTo(target);
+          setIsScrubbing(false);
+        },
+        onPanResponderTerminate: () => {
+          setIsScrubbing(false);
+        },
+      }),
+    [effectiveDuration, seekTo]
+  );
+
+  if (!currentTrack) {
+    return null;
+  }
 
   return (
     <Modal visible={visible} animationType="slide" transparent={false} onRequestClose={onClose}>
-      <LinearGradient
-        colors={[gradient.primary, gradient.secondary, gradient.background]}
-        style={styles.gradientContainer}
-        start={{ x: 0.5, y: 0 }}
-        end={{ x: 0.5, y: 1 }}
-      >
+      <View style={styles.container}>
+        {/* Dynamic Blurred Cover Art Background (Apple Music Frosted Glass Effect) */}
+        {resolvedArtwork ? (
+          <Image
+            source={{ uri: resolvedArtwork }}
+            style={[
+              StyleSheet.absoluteFillObject,
+              styles.blurredBgImage,
+              Platform.OS === 'web'
+                ? ({
+                    filter: 'blur(60px) saturate(300%) brightness(0.7)',
+                    transform: [{ scale: 1.4 }],
+                  } as any)
+                : null,
+            ]}
+            blurRadius={Platform.OS === 'web' ? undefined : 55}
+            resizeMode="cover"
+          />
+        ) : (
+          <LinearGradient
+            colors={[gradient.primary, gradient.secondary, gradient.background]}
+            style={StyleSheet.absoluteFillObject}
+            start={{ x: 0.5, y: 0 }}
+            end={{ x: 0.5, y: 1 }}
+          />
+        )}
+
+        {/* Ambient Glassmorphism Tint Overlay */}
+        <LinearGradient
+          colors={[
+            'rgba(10, 10, 20, 0.15)',
+            'rgba(10, 10, 18, 0.45)',
+            'rgba(5, 5, 10, 0.82)'
+          ]}
+          style={StyleSheet.absoluteFillObject}
+          start={{ x: 0.5, y: 0 }}
+          end={{ x: 0.5, y: 1 }}
+        />
+
+        {/* Frosted Glass Sheen Overlay */}
+        <View style={[StyleSheet.absoluteFillObject, styles.frostedGlassSheen]} pointerEvents="none" />
+
         <SafeAreaView style={styles.safeArea}>
           {/* Header */}
           <View style={styles.header}>
-            <TouchableOpacity style={styles.dismissButton} onPress={onClose}>
+            <TouchableOpacity style={styles.dismissButton} onPress={onClose} activeOpacity={0.7}>
               <ChevronDown size={28} color="#ffffff" />
             </TouchableOpacity>
 
             <View style={styles.headerTitleContainer}>
               <View style={styles.grabber} />
               <Text style={styles.headerContextText} numberOfLines={1}>
-                PLAYING FROM DISCOVERY
+                PLAYING FROM SONORA
               </Text>
             </View>
 
-            <TouchableOpacity style={styles.dismissButton} onPress={() => setShowAudioSettings(true)}>
+            <TouchableOpacity
+              style={styles.dismissButton}
+              onPress={() => setShowAudioSettings(true)}
+              activeOpacity={0.7}
+            >
               <Sliders size={20} color="#ffffff" />
             </TouchableOpacity>
           </View>
@@ -173,6 +268,7 @@ export const NowPlayingSheet: React.FC<NowPlayingSheetProps> = ({ visible, onClo
               <TouchableOpacity
                 style={styles.heartButton}
                 onPress={() => setIsLiked(!isLiked)}
+                activeOpacity={0.7}
               >
                 <Heart
                   size={24}
@@ -183,7 +279,7 @@ export const NowPlayingSheet: React.FC<NowPlayingSheetProps> = ({ visible, onClo
             </View>
           </View>
 
-          {/* Audio Quality Badge */}
+          {/* Audio Quality & Artwork Resolution Badge */}
           {streamMetadata && (
             <TouchableOpacity
               style={styles.qualityBadgeRow}
@@ -204,20 +300,58 @@ export const NowPlayingSheet: React.FC<NowPlayingSheetProps> = ({ visible, onClo
             </TouchableOpacity>
           )}
 
-          {/* Scrubber Bar */}
+          {/* Interactive Draggable Scrubber with Live Feedback & Quick Seek */}
           <View style={styles.scrubberContainer}>
-            <TouchableOpacity
+            <View
+              ref={trackRef}
+              {...panResponder.panHandlers}
               style={styles.scrubberTouchArea}
-              onPress={handleScrubPress}
-              activeOpacity={1}
+              testID="scrubber-touch-area"
+              onLayout={(e) => {
+                trackLayoutRef.current = e.nativeEvent.layout;
+              }}
             >
-              <View style={styles.scrubberTrack}>
-                <View style={[styles.scrubberFill, { width: `${progress * 100}%` }]} />
-                <View style={[styles.scrubberThumb, { left: `${Math.max(0, Math.min(97, progress * 100))}%` }]} />
+              <View style={styles.scrubberTrack} pointerEvents="none">
+                <View style={[styles.scrubberFill, { width: `${displayedProgress * 100}%` }]} />
+                <View
+                  style={[
+                    styles.scrubberThumb,
+                    isScrubbing && styles.scrubberThumbActive,
+                    { left: `${Math.max(0, Math.min(97, displayedProgress * 100))}%` }
+                  ]}
+                />
               </View>
-            </TouchableOpacity>
+            </View>
+
+            {/* Time Labels & Quick Seek Controls (-10s / +10s) */}
             <View style={styles.timeLabelsRow}>
-              <Text style={styles.timeLabel}>{formatTime(positionMillis)}</Text>
+              <Text style={styles.timeLabel}>{formatTime(displayedPosition)}</Text>
+
+              {/* Quick Jump Buttons: Move forward and backward effortlessly */}
+              <View style={styles.quickSeekPills}>
+                <TouchableOpacity
+                  style={styles.seekPill}
+                  onPress={() => seekBy(-10000)}
+                  activeOpacity={0.7}
+                  testID="btn-seek-backward-10"
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <RotateCcw size={12} color="rgba(255, 255, 255, 0.85)" />
+                  <Text style={styles.seekPillText}>-10s</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.seekPill}
+                  onPress={() => seekBy(10000)}
+                  activeOpacity={0.7}
+                  testID="btn-seek-forward-10"
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <RotateCw size={12} color="rgba(255, 255, 255, 0.85)" />
+                  <Text style={styles.seekPillText}>+10s</Text>
+                </TouchableOpacity>
+              </View>
+
               <Text style={styles.timeLabel}>-{formatTime(remainingMillis)}</Text>
             </View>
           </View>
@@ -225,12 +359,12 @@ export const NowPlayingSheet: React.FC<NowPlayingSheetProps> = ({ visible, onClo
           {/* Primary Playback Controls */}
           <View style={styles.controlsRow}>
             {/* Shuffle */}
-            <TouchableOpacity onPress={toggleShuffle} style={styles.secondaryButton}>
+            <TouchableOpacity onPress={toggleShuffle} style={styles.secondaryButton} activeOpacity={0.7}>
               <Shuffle size={22} color={isShuffled ? '#fa2d48' : 'rgba(255,255,255,0.7)'} />
             </TouchableOpacity>
 
-            {/* Previous */}
-            <TouchableOpacity onPress={playPrevious} style={styles.skipButton}>
+            {/* Move Backward / Previous Track */}
+            <TouchableOpacity onPress={playPrevious} style={styles.skipButton} activeOpacity={0.7}>
               <SkipBack size={32} color="#ffffff" fill="#ffffff" />
             </TouchableOpacity>
 
@@ -245,13 +379,13 @@ export const NowPlayingSheet: React.FC<NowPlayingSheetProps> = ({ visible, onClo
               )}
             </TouchableOpacity>
 
-            {/* Next */}
-            <TouchableOpacity onPress={playNext} style={styles.skipButton}>
+            {/* Move Forward / Next Track */}
+            <TouchableOpacity onPress={playNext} style={styles.skipButton} activeOpacity={0.7}>
               <SkipForward size={32} color="#ffffff" fill="#ffffff" />
             </TouchableOpacity>
 
             {/* Repeat */}
-            <TouchableOpacity onPress={toggleRepeat} style={styles.secondaryButton}>
+            <TouchableOpacity onPress={toggleRepeat} style={styles.secondaryButton} activeOpacity={0.7}>
               {repeatMode === 'one' ? (
                 <Repeat1 size={22} color="#fa2d48" />
               ) : (
@@ -260,27 +394,30 @@ export const NowPlayingSheet: React.FC<NowPlayingSheetProps> = ({ visible, onClo
             </TouchableOpacity>
           </View>
 
-          {/* Bottom Toolbar */}
+          {/* Bottom Toolbar with Frosted Glass styling */}
           <View style={styles.bottomToolbar}>
             <TouchableOpacity
               style={styles.toolButton}
               onPress={() => setShowLyrics(!showLyrics)}
+              activeOpacity={0.7}
             >
-              <Mic2 size={22} color={showLyrics ? '#fa2d48' : 'rgba(255,255,255,0.8)'} />
+              <Mic2 size={22} color={showLyrics ? '#fa2d48' : 'rgba(255,255,255,0.85)'} />
             </TouchableOpacity>
 
             <TouchableOpacity
               style={styles.toolButton}
               onPress={() => setShowAudioSettings(true)}
+              activeOpacity={0.7}
             >
-              <Sliders size={20} color="rgba(255,255,255,0.8)" />
+              <Sliders size={20} color="rgba(255,255,255,0.85)" />
             </TouchableOpacity>
 
             <TouchableOpacity
               style={styles.toolButton}
               onPress={() => setShowQueue(true)}
+              activeOpacity={0.7}
             >
-              <ListMusic size={22} color="rgba(255,255,255,0.8)" />
+              <ListMusic size={22} color="rgba(255,255,255,0.85)" />
             </TouchableOpacity>
           </View>
 
@@ -288,14 +425,33 @@ export const NowPlayingSheet: React.FC<NowPlayingSheetProps> = ({ visible, onClo
           <QueueDrawer visible={showQueue} onClose={() => setShowQueue(false)} />
           <AudioSettingsModal visible={showAudioSettings} onClose={() => setShowAudioSettings(false)} />
         </SafeAreaView>
-      </LinearGradient>
+      </View>
     </Modal>
   );
 };
 
 const styles = StyleSheet.create({
-  gradientContainer: {
+  container: {
     flex: 1,
+    backgroundColor: '#0a0a0e',
+    overflow: 'hidden',
+  },
+  blurredBgImage: {
+    width: '120%',
+    height: '120%',
+    top: '-10%',
+    left: '-10%',
+    position: 'absolute',
+    opacity: 0.9,
+  },
+  frostedGlassSheen: {
+    backgroundColor: 'rgba(255, 255, 255, 0.02)',
+    ...(Platform.OS === 'web'
+      ? {
+          backdropFilter: 'blur(20px)',
+          WebkitBackdropFilter: 'blur(20px)',
+        }
+      : {}),
   },
   safeArea: {
     flex: 1,
@@ -318,11 +474,11 @@ const styles = StyleSheet.create({
     width: 36,
     height: 4,
     borderRadius: 2,
-    backgroundColor: 'rgba(255, 255, 255, 0.3)',
+    backgroundColor: 'rgba(255, 255, 255, 0.35)',
     marginBottom: 6,
   },
   headerContextText: {
-    color: 'rgba(255, 255, 255, 0.6)',
+    color: 'rgba(255, 255, 255, 0.65)',
     fontSize: 10,
     fontWeight: '700',
     letterSpacing: 0.8,
@@ -334,16 +490,18 @@ const styles = StyleSheet.create({
   },
   artworkShadowContainer: {
     shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 16 },
-    shadowOpacity: 0.45,
-    shadowRadius: 24,
-    elevation: 20,
+    shadowOffset: { width: 0, height: 18 },
+    shadowOpacity: 0.55,
+    shadowRadius: 28,
+    elevation: 24,
   },
   artwork: {
     width: ARTWORK_SIZE,
     height: ARTWORK_SIZE,
-    borderRadius: 16,
+    borderRadius: 18,
     backgroundColor: '#1c1c1e',
+    borderWidth: 0.5,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
   },
   artworkPlaceholder: {
     justifyContent: 'center',
@@ -364,9 +522,12 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: '800',
     letterSpacing: -0.5,
+    textShadowColor: 'rgba(0, 0, 0, 0.35)',
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 6,
   },
   artistText: {
-    color: 'rgba(255, 255, 255, 0.7)',
+    color: 'rgba(255, 255, 255, 0.75)',
     fontSize: 17,
     fontWeight: '500',
     marginTop: 4,
@@ -386,18 +547,20 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   qualityBadge: {
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+    backgroundColor: 'rgba(255, 255, 255, 0.14)',
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 6,
+    borderWidth: 0.5,
+    borderColor: 'rgba(255, 255, 255, 0.15)',
   },
   losslessBadge: {
-    backgroundColor: 'rgba(52, 199, 89, 0.3)',
+    backgroundColor: 'rgba(52, 199, 89, 0.35)',
+    borderColor: 'rgba(52, 199, 89, 0.5)',
   },
   artworkBadge: {
     backgroundColor: 'rgba(250, 45, 72, 0.25)',
-    borderColor: 'rgba(250, 45, 72, 0.4)',
-    borderWidth: 0.5,
+    borderColor: 'rgba(250, 45, 72, 0.45)',
   },
   artworkBadgeText: {
     color: '#fa2d48',
@@ -412,7 +575,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.3,
   },
   loudnessText: {
-    color: 'rgba(255, 255, 255, 0.5)',
+    color: 'rgba(255, 255, 255, 0.6)',
     fontSize: 11,
     fontWeight: '500',
   },
@@ -421,48 +584,86 @@ const styles = StyleSheet.create({
     marginTop: 16,
   },
   scrubberTouchArea: {
-    height: 30,
+    height: 36,
     justifyContent: 'center',
-  },
+    cursor: 'pointer',
+  } as any,
   scrubberTrack: {
-    height: 4,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    borderRadius: 2,
+    height: 5,
+    backgroundColor: 'rgba(255, 255, 255, 0.22)',
+    borderRadius: 3,
     position: 'relative',
   },
   scrubberFill: {
     height: '100%',
     backgroundColor: '#ffffff',
-    borderRadius: 2,
+    borderRadius: 3,
   },
   scrubberThumb: {
     position: 'absolute',
     top: -5,
-    width: 14,
-    height: 14,
-    borderRadius: 7,
+    width: 15,
+    height: 15,
+    borderRadius: 8,
     backgroundColor: '#ffffff',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 3,
+    shadowOpacity: 0.35,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  scrubberThumbActive: {
+    top: -7,
+    width: 19,
+    height: 19,
+    borderRadius: 10,
+    backgroundColor: '#ffffff',
+    shadowColor: '#ffffff',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.8,
+    shadowRadius: 8,
+    elevation: 8,
   },
   timeLabelsRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginTop: 2,
+    alignItems: 'center',
+    marginTop: 4,
   },
   timeLabel: {
-    color: 'rgba(255, 255, 255, 0.5)',
+    color: 'rgba(255, 255, 255, 0.6)',
     fontSize: 12,
-    fontWeight: '500',
+    fontWeight: '600',
+    fontVariant: ['tabular-nums'],
+    minWidth: 42,
+  },
+  quickSeekPills: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  seekPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(255, 255, 255, 0.12)',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 12,
+    borderWidth: 0.5,
+    borderColor: 'rgba(255, 255, 255, 0.18)',
+  },
+  seekPillText: {
+    color: 'rgba(255, 255, 255, 0.85)',
+    fontSize: 11,
+    fontWeight: '700',
   },
   controlsRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 32,
-    marginVertical: 12,
+    paddingHorizontal: 28,
+    marginVertical: 10,
   },
   secondaryButton: {
     padding: 10,
@@ -479,14 +680,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.35,
-    shadowRadius: 8,
+    shadowOpacity: 0.4,
+    shadowRadius: 10,
+    elevation: 8,
   },
   bottomToolbar: {
     flexDirection: 'row',
     justifyContent: 'space-around',
     alignItems: 'center',
-    paddingVertical: 14,
+    paddingVertical: 12,
     paddingHorizontal: 40,
   },
   toolButton: {
