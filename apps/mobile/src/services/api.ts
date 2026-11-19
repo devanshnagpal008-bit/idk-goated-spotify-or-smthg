@@ -40,8 +40,8 @@ export interface HomeFeed {
   newReleases: any[];
 }
 
-// Configurable API base URL with local IP support
-export let API_BASE_URL = 'http://localhost:8000/api';
+// Configurable API base URL with environment variable support
+export let API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:8000/api';
 
 export function setApiBaseUrl(url: string) {
   API_BASE_URL = url;
