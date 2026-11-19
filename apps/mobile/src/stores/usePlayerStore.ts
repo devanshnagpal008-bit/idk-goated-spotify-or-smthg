@@ -16,8 +16,10 @@ interface PlayerState {
   repeatMode: 'off' | 'all' | 'one';
   sound: Audio.Sound | null;
   error: string | null;
+  artworkResolution: '1080p' | '1440p' | '4k';
 
   // Actions
+  setArtworkResolution: (resolution: '1080p' | '1440p' | '4k') => void;
   playTrack: (track: Track, newQueue?: Track[]) => Promise<void>;
   togglePlayPause: () => Promise<void>;
   seekTo: (positionMillis: number) => Promise<void>;
@@ -46,6 +48,9 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   repeatMode: 'off',
   sound: null,
   error: null,
+  artworkResolution: '1440p',
+
+  setArtworkResolution: (resolution: '1080p' | '1440p' | '4k') => set({ artworkResolution: resolution }),
 
   playTrack: async (track: Track, newQueue?: Track[]) => {
     const { sound: currentSound, queue: currentQueue } = get();

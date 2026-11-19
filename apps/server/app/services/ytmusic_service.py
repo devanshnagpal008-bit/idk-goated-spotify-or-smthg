@@ -1,3 +1,4 @@
+import re
 import logging
 from typing import List, Optional, Dict, Any
 from ytmusicapi import YTMusic
@@ -24,12 +25,42 @@ class YTMusicService:
             logger.warning(f"Error initializing YTMusic with cookies: {e}. Falling back to unauthenticated client.")
             self._yt = YTMusic()
 
-    def _extract_best_thumbnail(self, thumbnails: List[Dict[str, Any]]) -> str:
+    def _upgrade_thumbnail_resolution(self, url: str, quality: Optional[str] = None) -> str:
+        if not url:
+            return ""
+
+        target_quality = quality or getattr(settings, "COVER_ART_QUALITY", "1440p")
+        dim = "1440"
+        if target_quality in ("4k", "2160p"):
+            dim = "2160"
+        elif target_quality == "1080p":
+            dim = "1080"
+
+        # 1. Google User Content (YouTube Music album/track/artist/playlist artwork)
+        if "googleusercontent.com" in url or "ggpht.com" in url:
+            if re.search(r'=[sw]\d+', url):
+                return re.sub(r'=w\d+-h\d+.*|=s\d+.*', f'=w{dim}-h{dim}-l90-rj', url)
+            else:
+                return f"{url}=w{dim}-h{dim}-l90-rj"
+
+        # 2. YouTube Video Thumbnails (i.ytimg.com)
+        if "ytimg.com" in url:
+            # Upgrade standard/hq default to 1080p maxresdefault
+            match = re.search(r'/vi/([^/]+)/', url)
+            if match:
+                video_id = match.group(1)
+                return f"https://i.ytimg.com/vi/{video_id}/maxresdefault.jpg"
+            return re.sub(r'/(hq|mq|sd|default)\.jpg.*', '/maxresdefault.jpg', url)
+
+        return url
+
+    def _extract_best_thumbnail(self, thumbnails: List[Dict[str, Any]], quality: Optional[str] = None) -> str:
         if not thumbnails:
             return ""
-        # Return thumbnail with highest width/height
+        # Return thumbnail with highest width/height upgraded to ultra-high resolution (1080p / 1440p / 4K)
         sorted_thumbs = sorted(thumbnails, key=lambda t: t.get("width", 0), reverse=True)
-        return sorted_thumbs[0].get("url", "")
+        raw_url = sorted_thumbs[0].get("url", "")
+        return self._upgrade_thumbnail_resolution(raw_url, quality=quality)
 
     def _parse_track(self, item: Dict[str, Any]) -> Optional[TrackBase]:
         video_id = item.get("videoId")
