@@ -9,7 +9,8 @@ import {
   Switch,
   ScrollView
 } from 'react-native';
-import { X, Sliders, Volume2, Shuffle, Check } from 'lucide-react-native';
+import { X, Sliders, Volume2, Shuffle, Check, Image as ImageIcon } from 'lucide-react-native';
+import { usePlayerStore } from '../stores/usePlayerStore';
 
 interface AudioSettingsModalProps {
   visible: boolean;
@@ -29,6 +30,7 @@ const EQ_PRESETS = [
 const CROSSFADE_STEPS = [0, 2, 4, 6, 8, 12];
 
 export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({ visible, onClose }) => {
+  const { artworkResolution, setArtworkResolution } = usePlayerStore();
   const [loudnessNorm, setLoudnessNorm] = useState(true);
   const [crossfadeSec, setCrossfadeSec] = useState(4);
   const [activePreset, setActivePreset] = useState('Bass Boost');
@@ -86,6 +88,37 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({ visible,
                 >
                   <Text style={[styles.stepText, crossfadeSec === sec && styles.stepTextActive]}>
                     {sec === 0 ? 'Off' : `${sec}s`}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+
+          {/* Cover Art Resolution */}
+          <View style={styles.card}>
+            <View style={styles.cardHeaderRow}>
+              <View style={styles.cardIconTitle}>
+                <ImageIcon size={20} color="#fa2d48" style={{ marginRight: 8 }} />
+                <Text style={styles.cardTitle}>Cover Art Quality</Text>
+              </View>
+              <Text style={styles.badgeValue}>{artworkResolution.toUpperCase()}</Text>
+            </View>
+            <Text style={styles.cardDescription}>
+              Select master streaming resolution for album artwork and video thumbnails.
+            </Text>
+            <View style={styles.stepRow}>
+              {[
+                { label: '4K Ultra HD', value: '4k' as const },
+                { label: '1440p QHD', value: '1440p' as const },
+                { label: '1080p FHD', value: '1080p' as const },
+              ].map(opt => (
+                <TouchableOpacity
+                  key={opt.value}
+                  style={[styles.stepButton, artworkResolution === opt.value && styles.stepButtonActive, { flex: 1 }]}
+                  onPress={() => setArtworkResolution(opt.value)}
+                >
+                  <Text style={[styles.stepText, artworkResolution === opt.value && styles.stepTextActive]}>
+                    {opt.label}
                   </Text>
                 </TouchableOpacity>
               ))}

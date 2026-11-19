@@ -29,9 +29,10 @@ class Settings(BaseSettings):
     # Local music folders
     LOCAL_MUSIC_DIRS: list[str] = []
     
-    # Stream settings
+    # Stream & Artwork settings
     PREFER_PREMIUM_AAC: bool = True
     STREAM_CACHE_TTL_HOURS: int = 5
+    COVER_ART_QUALITY: str = "1440p"  # Options: "1080p", "1440p", "4k"
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

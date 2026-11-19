@@ -168,9 +168,29 @@ export async function getHomeFeed(): Promise<HomeFeed> {
   };
 }
 
+export function upgradeArtworkUrl(url?: string, targetResolution: '1080p' | '1440p' | '4k' = '1440p'): string {
+  if (!url) return '';
+  const dim = targetResolution === '4k' ? '2160' : targetResolution === '1080p' ? '1080' : '1440';
+  if (url.includes('googleusercontent.com') || url.includes('ggpht.com')) {
+    if (/=[sw]\d+/.test(url)) {
+      return url.replace(/=w\d+-h\d+.*|=s\d+.*/, `=w${dim}-h${dim}-l90-rj`);
+    }
+    return `${url}=w${dim}-h${dim}-l90-rj`;
+  }
+  if (url.includes('ytimg.com')) {
+    const match = url.match(/\/vi\/([^/]+)\//);
+    if (match) {
+      return `https://i.ytimg.com/vi/${match[1]}/maxresdefault.jpg`;
+    }
+    return url.replace(/\/(hq|mq|sd|default)\.jpg.*/, '/maxresdefault.jpg');
+  }
+  return url;
+}
+
 export function mapTrack(data: any): Track {
   if (!data) return {} as Track;
   const sourceId = data.sourceId || data.source_id || (typeof data.id === 'string' ? data.id.replace(/^yt_/, '') : '');
+  const rawThumb = data.thumbnailUrl || data.thumbnail_url || '';
   return {
     id: data.id || (sourceId.startsWith('local_') ? sourceId : `yt_${sourceId}`),
     title: data.title || 'Unknown Title',
@@ -179,7 +199,7 @@ export function mapTrack(data: any): Track {
     album: data.album || undefined,
     albumId: data.albumId || data.album_id,
     durationSeconds: data.durationSeconds || data.duration_seconds || 0,
-    thumbnailUrl: data.thumbnailUrl || data.thumbnail_url || '',
+    thumbnailUrl: upgradeArtworkUrl(rawThumb, '1440p'),
     isExplicit: Boolean(data.isExplicit || data.is_explicit),
     provider: data.provider || (sourceId.startsWith('local_') ? 'local' : 'ytmusic'),
     sourceId: sourceId,
