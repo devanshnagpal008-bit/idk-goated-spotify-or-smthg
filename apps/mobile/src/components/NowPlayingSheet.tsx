@@ -76,9 +76,9 @@ export const NowPlayingSheet: React.FC<NowPlayingSheetProps> = ({ visible, onClo
   // Scrubber drag / seek state
   const [isScrubbing, setIsScrubbing] = useState(false);
   const [scrubPositionMillis, setScrubPositionMillis] = useState(0);
-  const trackRef = useRef<View>(null);
+  const trackRef = useRef<any>(null);
   const trackLayoutRef = useRef({ x: 28, width: SCREEN_WIDTH - 56 });
-  const volumeTrackRef = useRef<View>(null);
+  const volumeTrackRef = useRef<any>(null);
   const volumeLayoutRef = useRef({ x: 28, width: SCREEN_WIDTH - 56 });
 
   // Progressive resolution cascade: selected -> 1440p -> 1080p -> 544p
@@ -207,7 +207,7 @@ export const NowPlayingSheet: React.FC<NowPlayingSheetProps> = ({ visible, onClo
           <Image
             source={{ uri: resolvedArtwork }}
             style={[
-              StyleSheet.absoluteFillObject,
+              StyleSheet.absoluteFill,
               styles.blurredBgImage,
               Platform.OS === 'web'
                 ? ({
@@ -222,7 +222,7 @@ export const NowPlayingSheet: React.FC<NowPlayingSheetProps> = ({ visible, onClo
         ) : (
           <LinearGradient
             colors={[gradient.primary, gradient.secondary, gradient.background]}
-            style={StyleSheet.absoluteFillObject}
+            style={StyleSheet.absoluteFill}
             start={{ x: 0.5, y: 0 }}
             end={{ x: 0.5, y: 1 }}
           />
@@ -235,13 +235,13 @@ export const NowPlayingSheet: React.FC<NowPlayingSheetProps> = ({ visible, onClo
             'rgba(10, 10, 18, 0.45)',
             'rgba(5, 5, 10, 0.82)'
           ]}
-          style={StyleSheet.absoluteFillObject}
+          style={StyleSheet.absoluteFill}
           start={{ x: 0.5, y: 0 }}
           end={{ x: 0.5, y: 1 }}
         />
 
         {/* Frosted Glass Sheen Overlay */}
-        <View style={[StyleSheet.absoluteFillObject, styles.frostedGlassSheen]} pointerEvents="none" />
+        <View style={[StyleSheet.absoluteFill, styles.frostedGlassSheen]} pointerEvents="none" />
 
         <SafeAreaView style={styles.safeArea}>
           {/* Header */}

@@ -32,12 +32,32 @@ export interface SearchResult {
   videos: Track[];
 }
 
+export interface TopArtistItem {
+  artist: string;
+  play_count: number;
+  score: number;
+  thumbnail_url?: string;
+}
+
+export interface TopGenreItem {
+  genre: string;
+  score: number;
+}
+
+export interface TopCharts {
+  top_artists: TopArtistItem[];
+  top_genres: TopGenreItem[];
+}
+
 export interface HomeFeed {
+  recentlyPlayed: Track[];
+  recommendedForYou: Track[];
   jumpBackIn: Track[];
   madeForYou: any[];
   dailyMixes: any[];
   quickPicks: Track[];
   newReleases: any[];
+  topCharts?: TopCharts;
 }
 
 // Configurable API base URL — set EXPO_PUBLIC_API_URL for cloud deployments
@@ -163,6 +183,8 @@ export async function getHomeFeed(): Promise<HomeFeed> {
   }
   const data = await response.json();
   return {
+    recentlyPlayed: (data.recently_played || []).map(mapTrack),
+    recommendedForYou: (data.recommended_for_you || []).map(mapTrack),
     jumpBackIn: (data.jump_back_in || []).map(mapTrack),
     madeForYou: data.made_for_you || [],
     dailyMixes: (data.daily_mixes || []).map((m: any) => ({
@@ -170,13 +192,17 @@ export async function getHomeFeed(): Promise<HomeFeed> {
       tracks: (m.tracks || []).map(mapTrack)
     })),
     quickPicks: (data.quick_picks || []).map(mapTrack),
-    newReleases: data.new_releases || []
+    newReleases: data.new_releases || [],
+    topCharts: data.top_charts
   };
 }
 
-export function upgradeArtworkUrl(url?: string, targetResolution: '1080p' | '1440p' | '4k' = '1440p'): string {
+export function upgradeArtworkUrl(
+  url?: string,
+  targetResolution: 'fast' | '1080p' | '1440p' | '4k' = 'fast'
+): string {
   if (!url) return '';
-  const dim = targetResolution === '4k' ? '2160' : targetResolution === '1080p' ? '1080' : '1440';
+  const dim = targetResolution === '4k' ? '2160' : targetResolution === '1440p' ? '1440' : targetResolution === '1080p' ? '1080' : '544';
   if (url.includes('googleusercontent.com') || url.includes('ggpht.com')) {
     if (/=[sw]\d+/.test(url)) {
       return url.replace(/=w\d+-h\d+.*|=s\d+.*/, `=w${dim}-h${dim}-l90-rj`);
@@ -186,7 +212,13 @@ export function upgradeArtworkUrl(url?: string, targetResolution: '1080p' | '144
   if (url.includes('ytimg.com')) {
     const match = url.match(/\/vi\/([^/]+)\//);
     if (match) {
+      if (targetResolution === 'fast') {
+        return `https://i.ytimg.com/vi/${match[1]}/hqdefault.jpg`;
+      }
       return `https://i.ytimg.com/vi/${match[1]}/maxresdefault.jpg`;
+    }
+    if (targetResolution === 'fast') {
+      return url.replace(/\/(mq|sd|default)\.jpg.*/, '/hqdefault.jpg');
     }
     return url.replace(/\/(hq|mq|sd|default)\.jpg.*/, '/maxresdefault.jpg');
   }
@@ -205,12 +237,43 @@ export function mapTrack(data: any): Track {
     album: data.album || undefined,
     albumId: data.albumId || data.album_id,
     durationSeconds: data.durationSeconds || data.duration_seconds || 0,
-    thumbnailUrl: upgradeArtworkUrl(rawThumb, '1440p'),
+    thumbnailUrl: upgradeArtworkUrl(rawThumb, 'fast'),
     isExplicit: Boolean(data.isExplicit || data.is_explicit),
     provider: data.provider || (sourceId.startsWith('local_') ? 'local' : 'ytmusic'),
     sourceId: sourceId,
     loudnessDb: data.loudnessDb || data.loudness_db
   };
+}
+
+export async function logPlayEvent(
+  track: Track,
+  eventType: 'start' | 'progress_30s' | 'complete' | 'skip',
+  positionMs: number = 0,
+  durationMs: number = 0
+): Promise<void> {
+  try {
+    await fetch(`${API_BASE_URL}/library/events`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        track_id: track.id,
+        event_type: eventType,
+        position_ms: Math.floor(positionMs),
+        duration_ms: Math.floor(durationMs || (track.durationSeconds || 0) * 1000),
+        title: track.title,
+        artist: track.artist,
+        thumbnail_url: track.thumbnailUrl
+      })
+    });
+  } catch (e) {
+    console.debug('Telemetry log failed:', e);
+  }
+}
+
+export async function fetchTopCharts(): Promise<TopCharts> {
+  const response = await fetch(`${API_BASE_URL}/library/top-charts`);
+  if (!response.ok) throw new Error('Failed to fetch top charts');
+  return response.json();
 }
 
 

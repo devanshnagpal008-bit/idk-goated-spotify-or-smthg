@@ -11,8 +11,8 @@ import {
   Modal,
   TextInput
 } from 'react-native';
-import { Play, Sparkles, Wand2, Music2, Clock } from 'lucide-react-native';
-import { getHomeFeed, HomeFeed, Track, API_BASE_URL } from '../services/api';
+import { Play, Sparkles, Wand2, Music2, Clock, Flame, TrendingUp } from 'lucide-react-native';
+import { getHomeFeed, HomeFeed, Track, TopArtistItem, TopGenreItem, API_BASE_URL } from '../services/api';
 import { usePlayerStore } from '../stores/usePlayerStore';
 
 export const HomeScreen: React.FC = () => {
@@ -91,7 +91,139 @@ export const HomeScreen: React.FC = () => {
           </View>
         ) : (
           <>
-            {/* Daily Mixes Carousel (Milestone 4) */}
+            {/* 1. Recently Played Section (Last 15-20 songs) */}
+            {feed && feed.recentlyPlayed && feed.recentlyPlayed.length > 0 && (
+              <View style={styles.section}>
+                <View style={styles.sectionHeader}>
+                  <Clock size={18} color="#fa2d48" style={{ marginRight: 8 }} />
+                  <View>
+                    <Text style={styles.sectionTitle}>Recently Played</Text>
+                    <Text style={styles.sectionSubtitle}>Last {feed.recentlyPlayed.length} played tracks</Text>
+                  </View>
+                </View>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.horizontalScroll}>
+                  {feed.recentlyPlayed.map((track: Track, idx: number) => {
+                    const isPlayingCurrent = currentTrack?.id === track.id;
+                    return (
+                      <TouchableOpacity
+                        key={`recent-${track.id}-${idx}`}
+                        style={styles.card}
+                        activeOpacity={0.8}
+                        onPress={() => playTrack(track, feed.recentlyPlayed)}
+                      >
+                        <View style={styles.cardImageWrapper}>
+                          <Image source={{ uri: track.thumbnailUrl }} style={styles.cardImage} />
+                          <TouchableOpacity
+                            style={styles.cardPlayButton}
+                            onPress={() => playTrack(track, feed.recentlyPlayed)}
+                          >
+                            <Play size={16} color="#ffffff" fill="#ffffff" />
+                          </TouchableOpacity>
+                        </View>
+                        <Text style={[styles.cardTitle, isPlayingCurrent && styles.activeText]} numberOfLines={1}>
+                          {track.title}
+                        </Text>
+                        <Text style={styles.cardArtist} numberOfLines={1}>
+                          {track.artist}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+              </View>
+            )}
+
+            {/* 2. Recommended For You Section (Personalized listening pattern affinity) */}
+            {feed && feed.recommendedForYou && feed.recommendedForYou.length > 0 && (
+              <View style={styles.section}>
+                <View style={styles.sectionHeader}>
+                  <Sparkles size={18} color="#0a84ff" style={{ marginRight: 8 }} />
+                  <View>
+                    <Text style={styles.sectionTitle}>Recommended For You</Text>
+                    <Text style={styles.sectionSubtitle}>Tuned to your listening patterns & favorites</Text>
+                  </View>
+                </View>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.horizontalScroll}>
+                  {feed.recommendedForYou.map((track: Track, idx: number) => {
+                    const isPlayingCurrent = currentTrack?.id === track.id;
+                    return (
+                      <TouchableOpacity
+                        key={`rec-${track.id}-${idx}`}
+                        style={styles.card}
+                        activeOpacity={0.8}
+                        onPress={() => playTrack(track, feed.recommendedForYou)}
+                      >
+                        <View style={styles.cardImageWrapper}>
+                          <Image source={{ uri: track.thumbnailUrl }} style={styles.cardImage} />
+                          <TouchableOpacity
+                            style={[styles.cardPlayButton, { backgroundColor: '#0a84ff' }]}
+                            onPress={() => playTrack(track, feed.recommendedForYou)}
+                          >
+                            <Play size={16} color="#ffffff" fill="#ffffff" />
+                          </TouchableOpacity>
+                        </View>
+                        <Text style={[styles.cardTitle, isPlayingCurrent && styles.activeText]} numberOfLines={1}>
+                          {track.title}
+                        </Text>
+                        <Text style={styles.cardArtist} numberOfLines={1}>
+                          {track.artist}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+              </View>
+            )}
+
+            {/* 3. Your Top Charts (Liked Artists & Genres) */}
+            {feed && feed.topCharts && ((feed.topCharts.top_artists && feed.topCharts.top_artists.length > 0) || (feed.topCharts.top_genres && feed.topCharts.top_genres.length > 0)) && (
+              <View style={styles.section}>
+                <View style={styles.sectionHeader}>
+                  <Flame size={18} color="#ff9500" style={{ marginRight: 8 }} />
+                  <View>
+                    <Text style={styles.sectionTitle}>Your Top Charts</Text>
+                    <Text style={styles.sectionSubtitle}>Your most played artists and favorite vibes</Text>
+                  </View>
+                </View>
+
+                {/* Top Artists Row */}
+                {feed.topCharts.top_artists && feed.topCharts.top_artists.length > 0 && (
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={[styles.horizontalScroll, { marginBottom: 12 }]}>
+                    {feed.topCharts.top_artists.map((artist: TopArtistItem, index: number) => (
+                      <View key={`${artist.artist}-${index}`} style={styles.artistChartCard}>
+                        <View style={styles.artistRankBadge}>
+                          <Text style={styles.artistRankNumber}>#{index + 1}</Text>
+                        </View>
+                        <View style={styles.artistAvatar}>
+                          <Text style={styles.artistInitial}>
+                            {artist.artist.charAt(0).toUpperCase()}
+                          </Text>
+                        </View>
+                        <Text style={styles.artistName} numberOfLines={1}>{artist.artist}</Text>
+                        <Text style={styles.artistPlays}>
+                          {artist.play_count} {artist.play_count === 1 ? 'play' : 'plays'}
+                        </Text>
+                      </View>
+                    ))}
+                  </ScrollView>
+                )}
+
+                {/* Top Genres Pill Tags */}
+                {feed.topCharts.top_genres && feed.topCharts.top_genres.length > 0 && (
+                  <View style={styles.genrePillContainer}>
+                    {feed.topCharts.top_genres.map((genre: TopGenreItem) => (
+                      <View key={genre.genre} style={styles.genrePill}>
+                        <Text style={styles.genrePillText}>{genre.genre}</Text>
+                        <View style={styles.genreDot} />
+                        <Text style={styles.genreScoreText}>Top Vibe</Text>
+                      </View>
+                    ))}
+                  </View>
+                )}
+              </View>
+            )}
+
+            {/* 4. Daily Mixes Carousel (Milestone 4) */}
             {feed && feed.dailyMixes.length > 0 && (
               <View style={styles.section}>
                 <View style={styles.sectionHeader}>
@@ -326,6 +458,11 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     letterSpacing: -0.4,
   },
+  sectionSubtitle: {
+    fontSize: 12,
+    color: '#8e8e93',
+    marginTop: 2,
+  },
   horizontalScroll: {
     paddingHorizontal: 20,
     gap: 14,
@@ -409,6 +546,96 @@ const styles = StyleSheet.create({
     color: '#8e8e93',
     fontSize: 12,
     marginTop: 2,
+  },
+  cardImageWrapper: {
+    position: 'relative',
+    width: 140,
+    height: 140,
+  },
+  artistChartCard: {
+    width: 120,
+    backgroundColor: '#1c1c1e',
+    borderRadius: 14,
+    padding: 12,
+    alignItems: 'center',
+    position: 'relative',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+  },
+  artistRankBadge: {
+    position: 'absolute',
+    top: 8,
+    left: 8,
+    backgroundColor: 'rgba(255, 149, 0, 0.2)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  artistRankNumber: {
+    color: '#ff9500',
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  artistAvatar: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: '#2c2c2e',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 10,
+    marginBottom: 8,
+  },
+  artistInitial: {
+    color: '#ffffff',
+    fontSize: 22,
+    fontWeight: '700',
+  },
+  artistName: {
+    color: '#ffffff',
+    fontSize: 13,
+    fontWeight: '700',
+    textAlign: 'center',
+    width: '100%',
+  },
+  artistPlays: {
+    color: '#8e8e93',
+    fontSize: 11,
+    marginTop: 2,
+  },
+  genrePillContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    paddingHorizontal: 20,
+    gap: 8,
+    marginTop: 4,
+  },
+  genrePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#1c1c1e',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  genrePillText: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  genreDot: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#ff9500',
+    marginHorizontal: 6,
+  },
+  genreScoreText: {
+    color: '#ff9500',
+    fontSize: 11,
+    fontWeight: '500',
   },
   verticalList: {
     paddingHorizontal: 20,
