@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { Audio, AVPlaybackStatus } from 'expo-av';
-import { Track, AudioStreamMetadata, getStreamUrl, prebufferStream, getRadioTracks } from '../services/api';
+import { Track, AudioStreamMetadata, getStreamUrl, prebufferStream, getRadioTracks, logPlayEvent } from '../services/api';
 
 interface PlayerState {
   currentTrack: Track | null;
@@ -87,6 +87,10 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       durationMillis: (track.durationSeconds || 0) * 1000
     });
 
+    // 1. Emit telemetry 'start' event
+    logPlayEvent(track, 'start', 0, (track.durationSeconds || 0) * 1000);
+    let hasEmitted30s = false;
+
     let sourceId = track.sourceId || (track as any).source_id;
     if (!sourceId && typeof track.id === 'string') {
       sourceId = track.id.replace(/^yt_/, '');
@@ -126,18 +130,32 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
             isLoading: status.isBuffering && !status.isPlaying
           });
 
-          // Prebuffer next track when 15 seconds remaining
-          if (status.durationMillis && (status.durationMillis - status.positionMillis <= 15000)) {
+          // Telemetry: 30-second progress threshold
+          if (!hasEmitted30s && status.positionMillis >= 30000) {
+            hasEmitted30s = true;
+            logPlayEvent(track, 'progress_30s', status.positionMillis, status.durationMillis || 0);
+          }
+
+          // Prebuffer next 2 tracks when 18 seconds remaining
+          if (status.durationMillis && (status.durationMillis - status.positionMillis <= 18000)) {
             const state = get();
-            const nextTrack = state.queue[state.queueIndex + 1];
-            if (nextTrack) {
-              const nextSourceId = nextTrack.sourceId || (nextTrack as any).source_id;
-              if (nextSourceId) prebufferStream(nextSourceId, state.streamingQuality);
+            const nextTrack1 = state.queue[state.queueIndex + 1];
+            if (nextTrack1) {
+              const nextSourceId1 = nextTrack1.sourceId || (nextTrack1 as any).source_id;
+              if (nextSourceId1) prebufferStream(nextSourceId1, state.streamingQuality);
+            }
+            const nextTrack2 = state.queue[state.queueIndex + 2];
+            if (nextTrack2) {
+              const nextSourceId2 = nextTrack2.sourceId || (nextTrack2 as any).source_id;
+              if (nextSourceId2) prebufferStream(nextSourceId2, state.streamingQuality);
             }
           }
 
           // Handle track completion
           if (status.didJustFinish) {
+            // Telemetry: track complete
+            logPlayEvent(track, 'complete', status.positionMillis, status.durationMillis || 0);
+
             const { repeatMode, playNext, sound } = get();
             if (repeatMode === 'one' && sound) {
               sound.replayAsync();
@@ -197,7 +215,13 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   },
 
   playNext: async () => {
-    const { queue, queueIndex, repeatMode, autoplay, currentTrack, playTrack } = get();
+    const { queue, queueIndex, repeatMode, autoplay, currentTrack, positionMillis, durationMillis, playTrack } = get();
+
+    // Telemetry: negative skip signal if skipped early (between 0.5s and 15s)
+    if (currentTrack && positionMillis > 500 && positionMillis < 15000) {
+      logPlayEvent(currentTrack, 'skip', positionMillis, durationMillis);
+    }
+
     const nextIndex = queueIndex + 1;
 
     if (nextIndex < queue.length) {

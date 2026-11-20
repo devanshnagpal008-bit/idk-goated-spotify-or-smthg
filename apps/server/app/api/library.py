@@ -6,7 +6,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete
 from app.db.database import get_db
 from app.db.models import LikeModel, PlayEventModel, TrackModel
-from app.schemas import TrackBase, PlayEventCreate
+from app.schemas import TrackBase, PlayEventCreate, TopChartsResponse
+from app.services.recommendation_engine import recommendation_engine
 
 router = APIRouter(prefix="/library", tags=["Library"])
 
@@ -77,13 +78,22 @@ async def toggle_like(payload: LikeToggleRequest, db: AsyncSession = Depends(get
 async def log_play_event(event: PlayEventCreate, db: AsyncSession = Depends(get_db)):
     # Verify track exists in db before foreign key insertion
     track_res = await db.execute(select(TrackModel).where(TrackModel.id == event.track_id))
-    if not track_res.scalars().first():
+    existing_track = track_res.scalars().first()
+    if not existing_track:
         db.add(TrackModel(
             id=event.track_id,
-            title="Track",
-            artist_name="Artist",
-            duration_seconds=event.duration_ms // 1000
+            title=event.title or "Track",
+            artist_name=event.artist or "Artist",
+            thumbnail_url=event.thumbnail_url or "",
+            duration_seconds=event.duration_ms // 1000 if event.duration_ms else 180
         ))
+        await db.flush()
+    elif event.title and existing_track.title in ("Track", ""):
+        existing_track.title = event.title
+        if event.artist:
+            existing_track.artist_name = event.artist
+        if event.thumbnail_url:
+            existing_track.thumbnail_url = event.thumbnail_url
         await db.flush()
 
     new_event = PlayEventModel(
@@ -103,7 +113,7 @@ async def get_listening_history(db: AsyncSession = Depends(get_db)):
         select(PlayEventModel, TrackModel)
         .join(TrackModel, PlayEventModel.track_id == TrackModel.id)
         .order_by(PlayEventModel.timestamp.desc())
-        .limit(30)
+        .limit(100)
     )
     items = res.all()
     seen = set()
@@ -120,7 +130,13 @@ async def get_listening_history(db: AsyncSession = Depends(get_db)):
                 provider="ytmusic" if not t.id.startswith("local_") else "local",
                 source_id=t.id.replace("yt_", "").replace("local_", "")
             ))
+            if len(history) >= 20:
+                break
     return history
+
+@router.get("/top-charts", response_model=TopChartsResponse)
+async def get_top_charts(db: AsyncSession = Depends(get_db)):
+    return await recommendation_engine.compute_top_charts(db)
 
 @router.post("/session")
 async def save_session(session: SessionState):

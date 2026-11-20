@@ -65,12 +65,29 @@ class SearchResultResponse(BaseModel):
     playlists: List[PlaylistBase] = Field(default_factory=list)
     videos: List[TrackBase] = Field(default_factory=list)
 
+class TopArtist(BaseModel):
+    artist: str
+    play_count: int
+    score: float
+    thumbnail_url: Optional[str] = None
+
+class TopGenre(BaseModel):
+    genre: str
+    score: float
+
+class TopChartsResponse(BaseModel):
+    top_artists: List[TopArtist] = Field(default_factory=list)
+    top_genres: List[TopGenre] = Field(default_factory=list)
+
 class HomeFeedResponse(BaseModel):
+    recently_played: List[TrackBase] = Field(default_factory=list)
+    recommended_for_you: List[TrackBase] = Field(default_factory=list)
     jump_back_in: List[TrackBase] = Field(default_factory=list)
     made_for_you: List[PlaylistBase] = Field(default_factory=list)
     daily_mixes: List[PlaylistBase] = Field(default_factory=list)
     quick_picks: List[TrackBase] = Field(default_factory=list)
     new_releases: List[AlbumBase] = Field(default_factory=list)
+    top_charts: Optional[TopChartsResponse] = None
 
 class LyricsLine(BaseModel):
     time_ms: int
@@ -87,3 +104,6 @@ class PlayEventCreate(BaseModel):
     event_type: Literal['start', 'progress_30s', 'complete', 'skip', 'like']
     position_ms: int = 0
     duration_ms: int = 0
+    title: Optional[str] = None
+    artist: Optional[str] = None
+    thumbnail_url: Optional[str] = None
