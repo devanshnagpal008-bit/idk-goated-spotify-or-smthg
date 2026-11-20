@@ -68,7 +68,7 @@ export async function searchCatalog(query: string, filterType?: string, limit: n
   };
 }
 
-export async function getStreamUrl(sourceId: string, refresh: boolean = false): Promise<AudioStreamMetadata> {
+export async function getStreamUrl(sourceId: string, refresh: boolean = false, quality: string = 'high'): Promise<AudioStreamMetadata> {
   if (!sourceId) {
     throw new Error('No valid sourceId provided to getStreamUrl');
   }
@@ -85,7 +85,12 @@ export async function getStreamUrl(sourceId: string, refresh: boolean = false): 
     };
   }
 
-  const url = `${API_BASE_URL}/streams/${encodeURIComponent(sourceId)}${refresh ? '?refresh=true' : ''}`;
+  const params = new URLSearchParams();
+  if (refresh) params.append('refresh', 'true');
+  if (quality && quality !== 'high') params.append('quality', quality);
+  const qStr = params.toString() ? `?${params.toString()}` : '';
+
+  const url = `${API_BASE_URL}/streams/${encodeURIComponent(sourceId)}${qStr}`;
   const response = await fetch(url);
   if (!response.ok) {
     throw new Error(`Stream resolution failed: ${response.statusText}`);
@@ -102,9 +107,10 @@ export async function getStreamUrl(sourceId: string, refresh: boolean = false): 
   };
 }
 
-export async function prebufferStream(sourceId: string): Promise<void> {
+export async function prebufferStream(sourceId: string, quality: string = 'high'): Promise<void> {
   try {
-    await fetch(`${API_BASE_URL}/streams/${encodeURIComponent(sourceId)}/prebuffer`, { method: 'POST' });
+    const qStr = quality && quality !== 'high' ? `?quality=${encodeURIComponent(quality)}` : '';
+    await fetch(`${API_BASE_URL}/streams/${encodeURIComponent(sourceId)}/prebuffer${qStr}`, { method: 'POST' });
   } catch (e) {
     // Background pre-buffer failure is non-fatal
     console.debug('Prebuffer failed:', e);

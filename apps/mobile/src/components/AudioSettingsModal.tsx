@@ -9,7 +9,7 @@ import {
   Switch,
   ScrollView
 } from 'react-native';
-import { X, Sliders, Volume2, Shuffle, Check, Image as ImageIcon } from 'lucide-react-native';
+import { X, Sliders, Volume2, Shuffle, Check, Image as ImageIcon, Radio } from 'lucide-react-native';
 import { usePlayerStore } from '../stores/usePlayerStore';
 
 interface AudioSettingsModalProps {
@@ -30,7 +30,7 @@ const EQ_PRESETS = [
 const CROSSFADE_STEPS = [0, 2, 4, 6, 8, 12];
 
 export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({ visible, onClose }) => {
-  const { artworkResolution, setArtworkResolution } = usePlayerStore();
+  const { artworkResolution, setArtworkResolution, streamingQuality, setStreamingQuality } = usePlayerStore();
   const [loudnessNorm, setLoudnessNorm] = useState(true);
   const [crossfadeSec, setCrossfadeSec] = useState(4);
   const [activePreset, setActivePreset] = useState('Bass Boost');
@@ -52,14 +52,15 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({ visible,
           <View style={styles.card}>
             <View style={styles.cardHeaderRow}>
               <View style={styles.cardIconTitle}>
-                <Volume2 size={20} color="#fa2d48" style={{ marginRight: 8 }} />
+                <Volume2 size={20} color="#0a84ff" style={{ marginRight: 8 }} />
                 <Text style={styles.cardTitle}>Loudness Normalization</Text>
               </View>
               <Switch
                 value={loudnessNorm}
                 onValueChange={setLoudnessNorm}
-                trackColor={{ false: '#3a3a3c', true: '#fa2d48' }}
-                thumbColor="#ffffff"
+                trackColor={{ false: '#2c2c2e', true: '#0a84ff' }}
+                thumbColor={loudnessNorm ? '#ffffff' : '#8e8e93'}
+                ios_backgroundColor="#2c2c2e"
               />
             </View>
             <Text style={styles.cardDescription}>
@@ -71,7 +72,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({ visible,
           <View style={styles.card}>
             <View style={styles.cardHeaderRow}>
               <View style={styles.cardIconTitle}>
-                <Shuffle size={20} color="#fa2d48" style={{ marginRight: 8 }} />
+                <Shuffle size={20} color="#0a84ff" style={{ marginRight: 8 }} />
                 <Text style={styles.cardTitle}>Crossfade Transitions</Text>
               </View>
               <Text style={styles.badgeValue}>{crossfadeSec === 0 ? 'Off' : `${crossfadeSec}s`}</Text>
@@ -94,11 +95,44 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({ visible,
             </View>
           </View>
 
+          {/* Song Streaming Quality */}
+          <View style={styles.card}>
+            <View style={styles.cardHeaderRow}>
+              <View style={styles.cardIconTitle}>
+                <Radio size={20} color="#0a84ff" style={{ marginRight: 8 }} />
+                <Text style={styles.cardTitle}>Streaming Audio Quality</Text>
+              </View>
+              <Text style={styles.badgeValue}>
+                {streamingQuality === 'high' ? 'HIGH (256K)' : streamingQuality === 'standard' ? 'NORMAL (160K)' : 'SAVER (96K)'}
+              </Text>
+            </View>
+            <Text style={styles.cardDescription}>
+              Select streaming bitrate for music playback and background prebuffering.
+            </Text>
+            <View style={styles.stepRow}>
+              {[
+                { label: 'High (256k)', value: 'high' as const },
+                { label: 'Standard (160k)', value: 'standard' as const },
+                { label: 'Data Saver (96k)', value: 'saver' as const },
+              ].map(opt => (
+                <TouchableOpacity
+                  key={opt.value}
+                  style={[styles.stepButton, streamingQuality === opt.value && styles.stepButtonActive, { flex: 1 }]}
+                  onPress={() => setStreamingQuality(opt.value)}
+                >
+                  <Text style={[styles.stepText, streamingQuality === opt.value && styles.stepTextActive]}>
+                    {opt.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+
           {/* Cover Art Resolution */}
           <View style={styles.card}>
             <View style={styles.cardHeaderRow}>
               <View style={styles.cardIconTitle}>
-                <ImageIcon size={20} color="#fa2d48" style={{ marginRight: 8 }} />
+                <ImageIcon size={20} color="#0a84ff" style={{ marginRight: 8 }} />
                 <Text style={styles.cardTitle}>Cover Art Quality</Text>
               </View>
               <Text style={styles.badgeValue}>{artworkResolution.toUpperCase()}</Text>
@@ -129,7 +163,7 @@ export const AudioSettingsModal: React.FC<AudioSettingsModalProps> = ({ visible,
           <View style={styles.card}>
             <View style={styles.cardHeaderRow}>
               <View style={styles.cardIconTitle}>
-                <Sliders size={20} color="#fa2d48" style={{ marginRight: 8 }} />
+                <Sliders size={20} color="#0a84ff" style={{ marginRight: 8 }} />
                 <Text style={styles.cardTitle}>10-Band Equalizer</Text>
               </View>
               <Text style={styles.badgeValue}>{activePreset}</Text>
@@ -237,8 +271,8 @@ const styles = StyleSheet.create({
   badgeValue: {
     fontSize: 13,
     fontWeight: '700',
-    color: '#fa2d48',
-    backgroundColor: 'rgba(250, 45, 72, 0.15)',
+    color: '#0a84ff',
+    backgroundColor: 'rgba(10, 132, 255, 0.15)',
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 6,
@@ -257,7 +291,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   stepButtonActive: {
-    backgroundColor: '#fa2d48',
+    backgroundColor: '#0a84ff',
   },
   stepText: {
     fontSize: 12,
@@ -289,7 +323,7 @@ const styles = StyleSheet.create({
   },
   barFill: {
     width: '100%',
-    backgroundColor: '#fa2d48',
+    backgroundColor: '#0a84ff',
     borderRadius: 4,
   },
   freqLabel: {
@@ -313,7 +347,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
   },
   presetChipActive: {
-    backgroundColor: '#fa2d48',
+    backgroundColor: '#0a84ff',
   },
   presetText: {
     fontSize: 12,

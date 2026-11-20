@@ -9,7 +9,7 @@ interface MiniPlayerProps {
 }
 
 export const MiniPlayer: React.FC<MiniPlayerProps> = ({ onPress }) => {
-  const { currentTrack, streamMetadata, isPlaying, isLoading, togglePlayPause, playNext, positionMillis, durationMillis } = usePlayerStore();
+  const { currentTrack, isPlaying, isLoading, togglePlayPause, playNext, positionMillis, durationMillis } = usePlayerStore();
 
   if (!currentTrack) {
     return null;
@@ -49,11 +49,6 @@ export const MiniPlayer: React.FC<MiniPlayerProps> = ({ onPress }) => {
             <Text style={styles.artist} numberOfLines={1} ellipsizeMode="tail">
               {currentTrack.artist}
             </Text>
-            {streamMetadata && (
-              <View style={[styles.badge, streamMetadata.isLossless && styles.losslessBadge]}>
-                <Text style={styles.badgeText}>{streamMetadata.label}</Text>
-              </View>
-            )}
           </View>
         </View>
 
@@ -158,21 +153,6 @@ const styles = StyleSheet.create({
     color: '#a1a1a6',
     fontSize: 12,
     flexShrink: 1,
-  },
-  badge: {
-    backgroundColor: 'rgba(255, 255, 255, 0.12)',
-    paddingHorizontal: 5,
-    paddingVertical: 1.5,
-    borderRadius: 4,
-  },
-  losslessBadge: {
-    backgroundColor: 'rgba(52, 199, 89, 0.25)',
-  },
-  badgeText: {
-    color: '#d1d1d6',
-    fontSize: 9,
-    fontWeight: '700',
-    letterSpacing: 0.2,
   },
   controls: {
     flexDirection: 'row',

@@ -14,14 +14,16 @@ class StreamResolverService:
         # In-memory cache holding AudioStreamMetadata with TTL
         self._memory_cache: TTLCache = TTLCache(maxsize=1000, ttl=18000) # 5 hours TTL
 
-    def _get_ydl_options(self) -> Dict[str, Any]:
+    def _get_ydl_options(self, quality: str = "high") -> Dict[str, Any]:
+        if quality == "saver":
+            fmt = "250/249/139/worstaudio[ext=m4a]/worstaudio/bestaudio"
+        elif quality == "standard":
+            fmt = "251/140/bestaudio[ext=m4a]/bestaudio[acodec=opus]/bestaudio/best"
+        else:  # high (256k AAC / 160k Opus / highest available)
+            fmt = "141/251/140/bestaudio[ext=m4a]/bestaudio[acodec=opus]/bestaudio/best"
+
         opts: Dict[str, Any] = {
-            # Format selection prioritizing highest bitrate audio:
-            # 1. itag 141 (AAC 256k)
-            # 2. itag 251 (Opus ~160k)
-            # 3. itag 140 (AAC 128k)
-            # 4. other best audio
-            'format': '141/251/140/bestaudio[ext=m4a]/bestaudio[acodec=opus]/bestaudio/best',
+            'format': fmt,
             'quiet': True,
             'no_warnings': True,
             'noplaylist': True,
@@ -88,18 +90,19 @@ class StreamResolverService:
 
         return codec, abr_int, label
 
-    def resolve_stream(self, video_id: str, force_refresh: bool = False) -> Optional[AudioStreamMetadata]:
+    def resolve_stream(self, video_id: str, force_refresh: bool = False, quality: str = "high") -> Optional[AudioStreamMetadata]:
         now = int(time.time())
+        cache_key = f"{video_id}_{quality}"
 
         # Check in-memory cache
-        if not force_refresh and video_id in self._memory_cache:
-            cached_meta: AudioStreamMetadata = self._memory_cache[video_id]
+        if not force_refresh and cache_key in self._memory_cache:
+            cached_meta: AudioStreamMetadata = self._memory_cache[cache_key]
             # Verify expiry with 15-minute buffer
             if cached_meta.expires_at is None or cached_meta.expires_at > (now + 900):
                 return cached_meta
 
         youtube_url = f"https://www.youtube.com/watch?v={video_id}"
-        ydl_opts = self._get_ydl_options()
+        ydl_opts = self._get_ydl_options(quality=quality)
 
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -127,7 +130,7 @@ class StreamResolverService:
                     loudness_db=loudness_db
                 )
 
-                self._memory_cache[video_id] = metadata
+                self._memory_cache[cache_key] = metadata
                 return metadata
 
         except Exception as e:

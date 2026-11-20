@@ -27,8 +27,9 @@ import {
   Heart,
   Music,
   Mic2,
-  RotateCcw,
-  RotateCw
+  MoreHorizontal,
+  Volume1,
+  Volume2
 } from 'lucide-react-native';
 import { usePlayerStore } from '../stores/usePlayerStore';
 import { getArtworkGradientColors } from '../utils/colorExtractor';
@@ -68,15 +69,17 @@ export const NowPlayingSheet: React.FC<NowPlayingSheetProps> = ({ visible, onClo
   const [isLiked, setIsLiked] = useState(false);
   const [showQueue, setShowQueue] = useState(false);
   const [showAudioSettings, setShowAudioSettings] = useState(false);
-  const [showBadgeDetail, setShowBadgeDetail] = useState(false);
   const [showLyrics, setShowLyrics] = useState(false);
   const [fallbackStep, setFallbackStep] = useState(0);
+  const [volume, setVolume] = useState(0.7);
 
   // Scrubber drag / seek state
   const [isScrubbing, setIsScrubbing] = useState(false);
   const [scrubPositionMillis, setScrubPositionMillis] = useState(0);
   const trackRef = useRef<View>(null);
   const trackLayoutRef = useRef({ x: 28, width: SCREEN_WIDTH - 56 });
+  const volumeTrackRef = useRef<View>(null);
+  const volumeLayoutRef = useRef({ x: 28, width: SCREEN_WIDTH - 56 });
 
   // Progressive resolution cascade: selected -> 1440p -> 1080p -> 544p
   const cascade: ('4k' | '1440p' | '1080p')[] =
@@ -152,6 +155,44 @@ export const NowPlayingSheet: React.FC<NowPlayingSheetProps> = ({ visible, onClo
         },
       }),
     [effectiveDuration, seekTo]
+  );
+
+  // Volume slider PanResponder
+  const getVolumeRatio = (pageX: number): number => {
+    if (Platform.OS === 'web' && volumeTrackRef.current) {
+      const node = volumeTrackRef.current as any;
+      if (typeof node.getBoundingClientRect === 'function') {
+        const rect = node.getBoundingClientRect();
+        return Math.max(0, Math.min(1, (pageX - rect.left) / rect.width));
+      }
+    }
+    const width = volumeLayoutRef.current.width || (SCREEN_WIDTH - 56);
+    const x = volumeLayoutRef.current.x || 28;
+    return Math.max(0, Math.min(1, (pageX - x) / width));
+  };
+
+  const volumePanResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => true,
+        onMoveShouldSetPanResponder: () => true,
+        onPanResponderGrant: (evt) => {
+          setVolume(getVolumeRatio(evt.nativeEvent.pageX));
+        },
+        onPanResponderMove: (evt) => {
+          setVolume(getVolumeRatio(evt.nativeEvent.pageX));
+        },
+        onPanResponderRelease: async (evt) => {
+          const vol = getVolumeRatio(evt.nativeEvent.pageX);
+          setVolume(vol);
+          // Apply volume to the sound object
+          const { sound } = usePlayerStore.getState();
+          if (sound) {
+            try { await sound.setVolumeAsync(vol); } catch (e) {}
+          }
+        },
+      }),
+    []
   );
 
   if (!currentTrack) {
@@ -253,7 +294,7 @@ export const NowPlayingSheet: React.FC<NowPlayingSheetProps> = ({ visible, onClo
             </View>
           )}
 
-          {/* Title & Metadata Row */}
+          {/* Title & Metadata Row — Apple Music style */}
           <View style={styles.metaContainer}>
             <View style={styles.titleColumn}>
               <Text style={styles.titleText} numberOfLines={1}>
@@ -272,35 +313,21 @@ export const NowPlayingSheet: React.FC<NowPlayingSheetProps> = ({ visible, onClo
               >
                 <Heart
                   size={24}
-                  color={isLiked ? '#fa2d48' : '#ffffff'}
+                  color={isLiked ? '#fa2d48' : 'rgba(255, 255, 255, 0.85)'}
                   fill={isLiked ? '#fa2d48' : 'transparent'}
                 />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.moreButton}
+                onPress={() => setShowAudioSettings(true)}
+                activeOpacity={0.7}
+              >
+                <MoreHorizontal size={24} color="rgba(255, 255, 255, 0.85)" />
               </TouchableOpacity>
             </View>
           </View>
 
-          {/* Audio Quality & Artwork Resolution Badge */}
-          {streamMetadata && (
-            <TouchableOpacity
-              style={styles.qualityBadgeRow}
-              onPress={() => setShowBadgeDetail(!showBadgeDetail)}
-              activeOpacity={0.8}
-            >
-              <View style={[styles.qualityBadge, streamMetadata.isLossless && styles.losslessBadge]}>
-                <Text style={styles.qualityBadgeText}>{streamMetadata.label}</Text>
-              </View>
-              <View style={[styles.qualityBadge, styles.artworkBadge]}>
-                <Text style={styles.artworkBadgeText}>{activeRes.toUpperCase()} ARTWORK</Text>
-              </View>
-              {streamMetadata.loudnessDb !== undefined && streamMetadata.loudnessDb !== null && (
-                <Text style={styles.loudnessText}>
-                  {streamMetadata.loudnessDb > 0 ? `+${streamMetadata.loudnessDb}` : streamMetadata.loudnessDb} dB LUFS
-                </Text>
-              )}
-            </TouchableOpacity>
-          )}
-
-          {/* Interactive Draggable Scrubber with Live Feedback & Quick Seek */}
+          {/* Progress Scrubber */}
           <View style={styles.scrubberContainer}>
             <View
               ref={trackRef}
@@ -323,65 +350,39 @@ export const NowPlayingSheet: React.FC<NowPlayingSheetProps> = ({ visible, onClo
               </View>
             </View>
 
-            {/* Time Labels & Quick Seek Controls (-10s / +10s) */}
+            {/* Time Labels */}
             <View style={styles.timeLabelsRow}>
               <Text style={styles.timeLabel}>{formatTime(displayedPosition)}</Text>
-
-              {/* Quick Jump Buttons: Move forward and backward effortlessly */}
-              <View style={styles.quickSeekPills}>
-                <TouchableOpacity
-                  style={styles.seekPill}
-                  onPress={() => seekBy(-10000)}
-                  activeOpacity={0.7}
-                  testID="btn-seek-backward-10"
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                >
-                  <RotateCcw size={12} color="rgba(255, 255, 255, 0.85)" />
-                  <Text style={styles.seekPillText}>-10s</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={styles.seekPill}
-                  onPress={() => seekBy(10000)}
-                  activeOpacity={0.7}
-                  testID="btn-seek-forward-10"
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                >
-                  <RotateCw size={12} color="rgba(255, 255, 255, 0.85)" />
-                  <Text style={styles.seekPillText}>+10s</Text>
-                </TouchableOpacity>
-              </View>
-
-              <Text style={styles.timeLabel}>-{formatTime(remainingMillis)}</Text>
+              <Text style={[styles.timeLabel, { textAlign: 'right' }]}>-{formatTime(remainingMillis)}</Text>
             </View>
           </View>
 
-          {/* Primary Playback Controls */}
+          {/* Primary Playback Controls — Apple Music large icons */}
           <View style={styles.controlsRow}>
             {/* Shuffle */}
             <TouchableOpacity onPress={toggleShuffle} style={styles.secondaryButton} activeOpacity={0.7}>
-              <Shuffle size={22} color={isShuffled ? '#fa2d48' : 'rgba(255,255,255,0.7)'} />
+              <Shuffle size={22} color={isShuffled ? '#fa2d48' : 'rgba(255,255,255,0.5)'} />
             </TouchableOpacity>
 
-            {/* Move Backward / Previous Track */}
+            {/* Previous Track */}
             <TouchableOpacity onPress={playPrevious} style={styles.skipButton} activeOpacity={0.7}>
-              <SkipBack size={32} color="#ffffff" fill="#ffffff" />
+              <SkipBack size={36} color="#ffffff" fill="#ffffff" />
             </TouchableOpacity>
 
-            {/* Play / Pause Primary */}
+            {/* Play / Pause */}
             <TouchableOpacity onPress={togglePlayPause} style={styles.mainPlayButton} activeOpacity={0.85}>
               {isLoading ? (
-                <ActivityIndicator size="small" color="#000000" />
+                <ActivityIndicator size="small" color="#ffffff" />
               ) : isPlaying ? (
-                <Pause size={34} color="#000000" fill="#000000" />
+                <Pause size={42} color="#ffffff" fill="#ffffff" />
               ) : (
-                <Play size={34} color="#000000" fill="#000000" style={{ marginLeft: 3 }} />
+                <Play size={42} color="#ffffff" fill="#ffffff" style={{ marginLeft: 4 }} />
               )}
             </TouchableOpacity>
 
-            {/* Move Forward / Next Track */}
+            {/* Next Track */}
             <TouchableOpacity onPress={playNext} style={styles.skipButton} activeOpacity={0.7}>
-              <SkipForward size={32} color="#ffffff" fill="#ffffff" />
+              <SkipForward size={36} color="#ffffff" fill="#ffffff" />
             </TouchableOpacity>
 
             {/* Repeat */}
@@ -389,19 +390,37 @@ export const NowPlayingSheet: React.FC<NowPlayingSheetProps> = ({ visible, onClo
               {repeatMode === 'one' ? (
                 <Repeat1 size={22} color="#fa2d48" />
               ) : (
-                <Repeat size={22} color={repeatMode === 'all' ? '#fa2d48' : 'rgba(255,255,255,0.7)'} />
+                <Repeat size={22} color={repeatMode === 'all' ? '#fa2d48' : 'rgba(255,255,255,0.5)'} />
               )}
             </TouchableOpacity>
           </View>
 
-          {/* Bottom Toolbar with Frosted Glass styling */}
+          {/* Volume Slider — Apple Music style */}
+          <View style={styles.volumeContainer}>
+            <Volume1 size={16} color="rgba(255, 255, 255, 0.45)" />
+            <View
+              ref={volumeTrackRef}
+              {...volumePanResponder.panHandlers}
+              style={styles.volumeTouchArea}
+              onLayout={(e) => {
+                volumeLayoutRef.current = e.nativeEvent.layout;
+              }}
+            >
+              <View style={styles.volumeTrack} pointerEvents="none">
+                <View style={[styles.volumeFill, { width: `${volume * 100}%` }]} />
+              </View>
+            </View>
+            <Volume2 size={16} color="rgba(255, 255, 255, 0.45)" />
+          </View>
+
+          {/* Bottom Toolbar */}
           <View style={styles.bottomToolbar}>
             <TouchableOpacity
               style={styles.toolButton}
               onPress={() => setShowLyrics(!showLyrics)}
               activeOpacity={0.7}
             >
-              <Mic2 size={22} color={showLyrics ? '#fa2d48' : 'rgba(255,255,255,0.85)'} />
+              <Mic2 size={22} color={showLyrics ? '#fa2d48' : 'rgba(255,255,255,0.65)'} />
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -409,7 +428,7 @@ export const NowPlayingSheet: React.FC<NowPlayingSheetProps> = ({ visible, onClo
               onPress={() => setShowAudioSettings(true)}
               activeOpacity={0.7}
             >
-              <Sliders size={20} color="rgba(255,255,255,0.85)" />
+              <Sliders size={20} color="rgba(255,255,255,0.65)" />
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -417,7 +436,7 @@ export const NowPlayingSheet: React.FC<NowPlayingSheetProps> = ({ visible, onClo
               onPress={() => setShowQueue(true)}
               activeOpacity={0.7}
             >
-              <ListMusic size={22} color="rgba(255,255,255,0.85)" />
+              <ListMusic size={22} color="rgba(255,255,255,0.65)" />
             </TouchableOpacity>
           </View>
 
@@ -535,53 +554,17 @@ const styles = StyleSheet.create({
   metaActions: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 4,
   },
   heartButton: {
     padding: 8,
   },
-  qualityBadgeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 28,
-    marginTop: 8,
-    gap: 8,
-  },
-  qualityBadge: {
-    backgroundColor: 'rgba(255, 255, 255, 0.14)',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
-    borderWidth: 0.5,
-    borderColor: 'rgba(255, 255, 255, 0.15)',
-  },
-  losslessBadge: {
-    backgroundColor: 'rgba(52, 199, 89, 0.35)',
-    borderColor: 'rgba(52, 199, 89, 0.5)',
-  },
-  artworkBadge: {
-    backgroundColor: 'rgba(250, 45, 72, 0.25)',
-    borderColor: 'rgba(250, 45, 72, 0.45)',
-  },
-  artworkBadgeText: {
-    color: '#fa2d48',
-    fontSize: 10,
-    fontWeight: '800',
-    letterSpacing: 0.5,
-  },
-  qualityBadgeText: {
-    color: '#ffffff',
-    fontSize: 11,
-    fontWeight: '700',
-    letterSpacing: 0.3,
-  },
-  loudnessText: {
-    color: 'rgba(255, 255, 255, 0.6)',
-    fontSize: 11,
-    fontWeight: '500',
+  moreButton: {
+    padding: 8,
   },
   scrubberContainer: {
     paddingHorizontal: 28,
-    marginTop: 16,
+    marginTop: 20,
   },
   scrubberTouchArea: {
     height: 36,
@@ -589,39 +572,39 @@ const styles = StyleSheet.create({
     cursor: 'pointer',
   } as any,
   scrubberTrack: {
-    height: 5,
-    backgroundColor: 'rgba(255, 255, 255, 0.22)',
-    borderRadius: 3,
+    height: 4,
+    backgroundColor: 'rgba(255, 255, 255, 0.18)',
+    borderRadius: 2,
     position: 'relative',
   },
   scrubberFill: {
     height: '100%',
-    backgroundColor: '#ffffff',
-    borderRadius: 3,
+    backgroundColor: 'rgba(255, 255, 255, 0.85)',
+    borderRadius: 2,
   },
   scrubberThumb: {
     position: 'absolute',
-    top: -5,
-    width: 15,
-    height: 15,
-    borderRadius: 8,
+    top: -4,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
     backgroundColor: '#ffffff',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.35,
-    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.3,
+    shadowRadius: 3,
     elevation: 4,
   },
   scrubberThumbActive: {
-    top: -7,
-    width: 19,
-    height: 19,
-    borderRadius: 10,
+    top: -6,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
     backgroundColor: '#ffffff',
     shadowColor: '#ffffff',
     shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.8,
-    shadowRadius: 8,
+    shadowOpacity: 0.6,
+    shadowRadius: 6,
     elevation: 8,
   },
   timeLabelsRow: {
@@ -631,32 +614,11 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   timeLabel: {
-    color: 'rgba(255, 255, 255, 0.6)',
+    color: 'rgba(255, 255, 255, 0.55)',
     fontSize: 12,
     fontWeight: '600',
     fontVariant: ['tabular-nums'],
     minWidth: 42,
-  },
-  quickSeekPills: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  seekPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: 'rgba(255, 255, 255, 0.12)',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 12,
-    borderWidth: 0.5,
-    borderColor: 'rgba(255, 255, 255, 0.18)',
-  },
-  seekPillText: {
-    color: 'rgba(255, 255, 255, 0.85)',
-    fontSize: 11,
-    fontWeight: '700',
   },
   controlsRow: {
     flexDirection: 'row',
@@ -672,17 +634,36 @@ const styles = StyleSheet.create({
     padding: 10,
   },
   mainPlayButton: {
-    width: 68,
-    height: 68,
-    borderRadius: 34,
-    backgroundColor: '#ffffff',
+    width: 72,
+    height: 72,
+    borderRadius: 36,
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.4,
-    shadowRadius: 10,
-    elevation: 8,
+  },
+  volumeContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 28,
+    marginTop: 4,
+    gap: 10,
+  },
+  volumeTouchArea: {
+    flex: 1,
+    height: 30,
+    justifyContent: 'center',
+    cursor: 'pointer',
+  } as any,
+  volumeTrack: {
+    height: 4,
+    backgroundColor: 'rgba(255, 255, 255, 0.18)',
+    borderRadius: 2,
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  volumeFill: {
+    height: '100%',
+    backgroundColor: 'rgba(255, 255, 255, 0.65)',
+    borderRadius: 2,
   },
   bottomToolbar: {
     flexDirection: 'row',
