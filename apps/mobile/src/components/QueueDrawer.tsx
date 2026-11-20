@@ -115,7 +115,7 @@ export const QueueDrawer: React.FC<QueueDrawerProps> = ({ visible, onClose }) =>
         {/* Autoplay Toggle Banner */}
         <View style={styles.autoplayBanner}>
           <View style={styles.autoplayLeft}>
-            <Radio size={20} color="#fa2d48" style={{ marginRight: 10 }} />
+            <Radio size={20} color="#0a84ff" style={{ marginRight: 10 }} />
             <View>
               <Text style={styles.autoplayTitle}>Endless Autoplay</Text>
               <Text style={styles.autoplayDesc}>Similar songs keep playing when queue ends</Text>
@@ -124,8 +124,9 @@ export const QueueDrawer: React.FC<QueueDrawerProps> = ({ visible, onClose }) =>
           <Switch
             value={autoplay}
             onValueChange={toggleAutoplay}
-            trackColor={{ false: '#3a3a3c', true: '#fa2d48' }}
-            thumbColor="#ffffff"
+            trackColor={{ false: '#2c2c2e', true: '#0a84ff' }}
+            thumbColor={autoplay ? '#ffffff' : '#8e8e93'}
+            ios_backgroundColor="#2c2c2e"
           />
         </View>
 

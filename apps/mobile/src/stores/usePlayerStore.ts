@@ -17,9 +17,11 @@ interface PlayerState {
   sound: Audio.Sound | null;
   error: string | null;
   artworkResolution: '1080p' | '1440p' | '4k';
+  streamingQuality: 'high' | 'standard' | 'saver';
 
   // Actions
   setArtworkResolution: (resolution: '1080p' | '1440p' | '4k') => void;
+  setStreamingQuality: (quality: 'high' | 'standard' | 'saver') => void;
   playTrack: (track: Track, newQueue?: Track[]) => Promise<void>;
   togglePlayPause: () => Promise<void>;
   seekTo: (positionMillis: number) => Promise<void>;
@@ -50,11 +52,13 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   sound: null,
   error: null,
   artworkResolution: '1440p',
+  streamingQuality: 'high',
 
   setArtworkResolution: (resolution: '1080p' | '1440p' | '4k') => set({ artworkResolution: resolution }),
+  setStreamingQuality: (quality: 'high' | 'standard' | 'saver') => set({ streamingQuality: quality }),
 
   playTrack: async (track: Track, newQueue?: Track[]) => {
-    const { sound: currentSound, queue: currentQueue } = get();
+    const { sound: currentSound, queue: currentQueue, streamingQuality } = get();
 
     // Stop and unload existing sound
     if (currentSound) {
@@ -90,7 +94,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
 
     try {
       // 1. Resolve stream URL from backend
-      const metadata = await getStreamUrl(sourceId);
+      const metadata = await getStreamUrl(sourceId, false, streamingQuality);
       set({ streamMetadata: metadata });
 
       // 2. Initialize Expo Audio Sound
@@ -128,7 +132,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
             const nextTrack = state.queue[state.queueIndex + 1];
             if (nextTrack) {
               const nextSourceId = nextTrack.sourceId || (nextTrack as any).source_id;
-              if (nextSourceId) prebufferStream(nextSourceId);
+              if (nextSourceId) prebufferStream(nextSourceId, state.streamingQuality);
             }
           }
 
