@@ -1,3 +1,11 @@
+idk what the ai wrote below but what i have a idea about is if you are reading this right now then this project is probably not deployed online but you can 
+run it locally on your machine and it runs fine . I am constantly making changes to improve the software/web .
+
+Read the data given below as you might find a way to run it locally on your machine :P
+
+
+
+
 # 🎵 Sonora — Personal Music Streaming System
 
 Sonora is a private, single-user personal music streaming app combining:
